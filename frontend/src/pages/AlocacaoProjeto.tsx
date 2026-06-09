@@ -6,7 +6,6 @@ interface Projeto { id: string; nome: string; status: string; data_inicio: strin
 interface Colaborador { id: string; nome: string; tipo: string; cargo: string; is_vaga?: boolean; custo_mensal?: number; }
 interface Alocacao { id?: string; projeto_id: string; colaborador_id: string; ano_mes: string; percentual_alocado: number | string; }
 
-// Helper para lidar com vírgula do padrão brasileiro
 const parseNumber = (v: string | number | undefined | null) => {
   if (v === undefined || v === null) return 0;
   if (typeof v === 'number') return v;
@@ -28,6 +27,11 @@ export default function AlocacaoProjeto() {
   
   const [meses, setMeses] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const canEdit = user && (user.role === 'admin' || user.role === 'gestor');
+  const canSeeCost = user && (user.role === 'admin' || user.role === 'gestor');
 
   useEffect(() => {
     fetchData();
@@ -96,7 +100,7 @@ export default function AlocacaoProjeto() {
   }, [filtroInicio, filtroFim]);
 
   const handleAlocacaoChange = (colabId: string, mes: string, val: string) => {
-    // Armazena a string crua para não quebrar a digitação de "33." no React
+    if (!canEdit) return;
     setAlocacoes(prev => {
       const clone = [...prev];
       const index = clone.findIndex(a => a.colaborador_id === colabId && a.ano_mes === mes && a.projeto_id === selectedProjeto);
@@ -115,9 +119,8 @@ export default function AlocacaoProjeto() {
   };
 
   const saveAlocacoes = async () => {
-    if (!selectedProjeto) return;
+    if (!selectedProjeto || !canEdit) return;
 
-    // Converte de volta para número antes de salvar
     const payload = alocacoes.map(a => ({
       ...a,
       percentual_alocado: parseNumber(a.percentual_alocado)
@@ -134,7 +137,7 @@ export default function AlocacaoProjeto() {
         throw new Error(error.error);
       }
       alert('Alocações salvas com sucesso!');
-      loadAlocacoes(selectedProjeto); // Recarrega os dados com os IDs reais do banco
+      loadAlocacoes(selectedProjeto);
     } catch (e: any) {
       alert(`Erro ao salvar: ${e.message}`);
     }
@@ -149,6 +152,7 @@ export default function AlocacaoProjeto() {
   });
 
   const addColaboradorRow = (colabId: string) => {
+    if (!canEdit) return;
     if (!colabId || colabsIdsInTable.includes(colabId) || meses.length === 0) return;
     setAlocacoes([...alocacoes, {
       projeto_id: selectedProjeto,
@@ -169,12 +173,14 @@ export default function AlocacaoProjeto() {
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-slate-800">Alocação por Projeto</h1>
-        <button 
-          onClick={saveAlocacoes}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
-        >
-          <Save className="w-5 h-5 mr-2" /> Salvar Alterações
-        </button>
+        {canEdit && (
+          <button 
+            onClick={saveAlocacoes}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
+          >
+            <Save className="w-5 h-5 mr-2" /> Salvar Alterações
+          </button>
+        )}
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mb-6">
@@ -232,19 +238,21 @@ export default function AlocacaoProjeto() {
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center gap-4">
-              <span className="text-sm font-semibold text-slate-600">Adicionar Colaborador:</span>
-              <select 
-                className="p-2 border border-slate-200 rounded-lg text-sm max-w-xs"
-                onChange={e => addColaboradorRow(e.target.value)}
-                defaultValue=""
-              >
-                <option value="" disabled>Selecione um recurso...</option>
-                {colaboradores.filter(c => !colabsIdsInTable.includes(c.id)).map(c => (
-                  <option key={c.id} value={c.id}>{c.nome} {c.is_vaga ? '(Vaga)' : ''} - {c.tipo} ({c.cargo})</option>
-                ))}
-              </select>
-            </div>
+            {canEdit && (
+              <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center gap-4">
+                <span className="text-sm font-semibold text-slate-600">Adicionar Colaborador:</span>
+                <select 
+                  className="p-2 border border-slate-200 rounded-lg text-sm max-w-xs"
+                  onChange={e => addColaboradorRow(e.target.value)}
+                  defaultValue=""
+                >
+                  <option value="" disabled>Selecione um recurso...</option>
+                  {colaboradores.filter(c => !colabsIdsInTable.includes(c.id)).map(c => (
+                    <option key={c.id} value={c.id}>{c.nome} {c.is_vaga ? '(Vaga)' : ''} - {c.tipo} ({c.cargo})</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               {loading ? <div className="p-8 text-center text-slate-500">Carregando...</div> : (
@@ -261,7 +269,7 @@ export default function AlocacaoProjeto() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredColabsInTable.length > 0 && (
+                    {canSeeCost && filteredColabsInTable.length > 0 && (
                       <tr className="bg-slate-100 border-b-2 border-slate-200 font-bold text-slate-700">
                         <td className="px-6 py-4">Custo Total no Projeto</td>
                         {meses.map(m => {
@@ -300,8 +308,8 @@ export default function AlocacaoProjeto() {
                                   type="text" inputMode="decimal"
                                   value={val}
                                   onChange={e => handleAlocacaoChange(c.id, m, e.target.value)}
-                                  disabled={disabled}
-                                  className={`w-20 text-center p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 ${disabled ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
+                                  disabled={disabled || !canEdit}
+                                  className={`w-20 text-center p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 ${disabled || !canEdit ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
                                 />
                                 <span className={`ml-1 ${disabled ? 'text-slate-300' : 'text-slate-500'}`}>%</span>
                               </div>

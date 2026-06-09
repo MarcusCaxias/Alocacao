@@ -16,6 +16,10 @@ export default function Projetos() {
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const canEdit = user && (user.role === 'admin' || user.role === 'gestor');
   
   const [formData, setFormData] = useState({
     nome: '',
@@ -46,6 +50,7 @@ export default function Projetos() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     
     if (new Date(formData.data_fim) < new Date(formData.data_inicio)) {
       alert('Data fim não pode ser anterior à data início.');
@@ -76,6 +81,7 @@ export default function Projetos() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canEdit) return;
     if (!confirm('Tem certeza que deseja excluir este projeto?')) return;
     try {
       const res = await fetch(`${API_URL}/projetos/${id}`, { method: 'DELETE' });
@@ -90,6 +96,7 @@ export default function Projetos() {
   };
 
   const openModal = (proj?: Projeto) => {
+    if (!canEdit) return;
     if (proj) {
       setEditingId(proj.id);
       setFormData({ 
@@ -112,13 +119,15 @@ export default function Projetos() {
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-slate-800">Projetos de PD&I</h1>
-        <button 
-          onClick={() => openModal()}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Novo Projeto
-        </button>
+        {canEdit && (
+          <button 
+            onClick={() => openModal()}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Novo Projeto
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -143,7 +152,7 @@ export default function Projetos() {
                 <th className="px-6 py-4">Descrição</th>
                 <th className="px-6 py-4">Período</th>
                 <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Ações</th>
+                {canEdit && <th className="px-6 py-4 text-right">Ações</th>}
               </tr>
             </thead>
             <tbody>
@@ -160,27 +169,29 @@ export default function Projetos() {
                       {p.status.toUpperCase()}
                     </span>
                   </td>
-                  <td className="px-6 py-4 flex justify-end gap-2">
-                    <button 
-                      onClick={() => openModal(p)} 
-                      disabled={isRTBA(p.nome)}
-                      className={`p-2 rounded-lg transition-colors ${isRTBA(p.nome) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'}`}
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(p.id)} 
-                      disabled={isRTBA(p.nome)}
-                      className={`p-2 rounded-lg transition-colors ${isRTBA(p.nome) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
+                  {canEdit && (
+                    <td className="px-6 py-4 flex justify-end gap-2">
+                      <button 
+                        onClick={() => openModal(p)} 
+                        disabled={isRTBA(p.nome)}
+                        className={`p-2 rounded-lg transition-colors ${isRTBA(p.nome) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'}`}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(p.id)} 
+                        disabled={isRTBA(p.nome)}
+                        className={`p-2 rounded-lg transition-colors ${isRTBA(p.nome) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={canEdit ? 5 : 4} className="px-6 py-8 text-center text-slate-500">
                     Nenhum projeto encontrado.
                   </td>
                 </tr>
@@ -191,7 +202,7 @@ export default function Projetos() {
       </div>
 
       {/* Modal */}
-      {isModalOpen && (
+      {isModalOpen && canEdit && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h2 className="text-xl font-bold mb-6 text-slate-800">

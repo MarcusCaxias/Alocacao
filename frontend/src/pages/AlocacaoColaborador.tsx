@@ -30,6 +30,10 @@ export default function AlocacaoColaborador() {
 
   const [expandedCols, setExpandedCols] = useState<Set<string>>(new Set());
 
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const canEdit = user && (user.role === 'admin' || user.role === 'gestor');
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -114,6 +118,7 @@ export default function AlocacaoColaborador() {
   };
 
   const handleAlocacaoChange = (colabId: string, projId: string, mes: string, val: string) => {
+    if (!canEdit) return;
     setAlocacoes(prev => {
       const clone = [...prev];
       const index = clone.findIndex(a => a.colaborador_id === colabId && a.ano_mes === mes && a.projeto_id === projId);
@@ -131,7 +136,6 @@ export default function AlocacaoColaborador() {
     });
   };
 
-  // Helper para lidar com vírgula do padrão brasileiro
   const parseNumber = (v: any) => {
     if (v === undefined || v === null) return 0;
     if (typeof v === 'number') return v;
@@ -141,6 +145,7 @@ export default function AlocacaoColaborador() {
   };
 
   const saveAlocacoes = async () => {
+    if (!canEdit) return;
     const payload = alocacoes.map(a => ({
       ...a,
       percentual_alocado: parseNumber(a.percentual_alocado)
@@ -157,7 +162,7 @@ export default function AlocacaoColaborador() {
         throw new Error(error.error);
       }
       alert('Alocações salvas com sucesso!');
-      fetchData(); // recarrega com ids reais
+      fetchData();
     } catch (e: any) {
       alert(`Erro ao salvar: ${e.message}`);
     }
@@ -202,8 +207,8 @@ export default function AlocacaoColaborador() {
   };
 
   const addProjetoToColaborador = (colabId: string, projId: string) => {
+    if (!canEdit) return;
     if (!projId || meses.length === 0) return;
-    // Add fake 0% just to render row
     setAlocacoes([...alocacoes, {
       projeto_id: projId,
       colaborador_id: colabId,
@@ -212,7 +217,6 @@ export default function AlocacaoColaborador() {
     }]);
   };
 
-  // Cálculo de RTBA dinâmico pro render
   const getTotals = (colabId: string, mes: string) => {
     const alocs = alocacoes.filter(a => a.colaborador_id === colabId && a.ano_mes === mes && a.projeto_id !== 'rtba-special-id');
     const total = alocs.reduce((sum, a) => sum + parseNumber(a.percentual_alocado), 0);
@@ -229,9 +233,6 @@ export default function AlocacaoColaborador() {
     return 'bg-amber-100 text-amber-800 border-amber-200';
   };
 
-  // Filtragem dos colaboradores
-
-  // Filtragem dos colaboradores
   const filteredColabs = colaboradores.filter(c => {
     const matchNome = c.nome.toLowerCase().includes(filtroNome.toLowerCase()) || c.cargo.toLowerCase().includes(filtroNome.toLowerCase());
     const matchTipo = filtroTipo ? c.tipo === filtroTipo : true;
@@ -271,12 +272,14 @@ export default function AlocacaoColaborador() {
           >
             <Download className="w-5 h-5 mr-2" /> Exportar RTBA
           </button>
-          <button 
-            onClick={saveAlocacoes}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors shadow-sm"
-          >
-            <Save className="w-5 h-5 mr-2" /> Salvar Alterações Globais
-          </button>
+          {canEdit && (
+            <button 
+              onClick={saveAlocacoes}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors shadow-sm"
+            >
+              <Save className="w-5 h-5 mr-2" /> Salvar Alterações Globais
+            </button>
+          )}
         </div>
       </div>
 
@@ -410,13 +413,12 @@ export default function AlocacaoColaborador() {
                   const isExpanded = expandedCols.has(c.id);
                   const alocacoesDoColab = alocacoes.filter(a => a.colaborador_id === c.id);
                   
-                  // Identificar projetos únicos (ignorando RTBA na edição)
                   const projsIds = Array.from(new Set(alocacoesDoColab.map(a => a.projeto_id))).filter(id => id !== 'rtba-special-id');
                   const projsDoColab = projetos.filter(p => projsIds.includes(p.id) && filtroProjetos.includes(p.id));
 
                   return (
                     <Fragment key={c.id}>
-                      {/* Linha Consolidada (Pai) */}
+                      {/* Linha Consolidada */}
                       <tr className={`border-b border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer ${isExpanded ? 'bg-slate-50' : ''}`} onClick={() => toggleExpand(c.id)}>
                         <td className="px-4 py-4 border-r border-slate-200">
                           <div className="flex items-center">
@@ -453,7 +455,6 @@ export default function AlocacaoColaborador() {
                             <tr key={`${c.id}-${p.id}`} className="bg-slate-50/30 border-b border-slate-100">
                               <td className="px-6 py-3 border-r border-slate-200 pl-16">
                                 <span className="text-sm font-semibold text-slate-700">{p.nome}</span>
-                                <span className="text-xs text-slate-400 block truncate max-w-[200px]"></span>
                               </td>
                               {meses.map(m => {
                                 const aloc = alocacoesDoColab.find(a => a.ano_mes === m && a.projeto_id === p.id);
@@ -467,8 +468,8 @@ export default function AlocacaoColaborador() {
                                         type="text" inputMode="decimal"
                                         value={val}
                                         onChange={e => handleAlocacaoChange(c.id, p.id, m, e.target.value)}
-                                        disabled={isOutOfProjectBounds}
-                                        className={`w-16 text-center p-1 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm ${isOutOfProjectBounds ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
+                                        disabled={isOutOfProjectBounds || !canEdit}
+                                        className={`w-16 text-center p-1 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm ${isOutOfProjectBounds || !canEdit ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
                                       />
                                     </div>
                                   </td>
@@ -477,7 +478,7 @@ export default function AlocacaoColaborador() {
                             </tr>
                           ))}
                           
-                          {/* Linha RTBA Dinâmica */}
+                          {/* Linha RTBA */}
                           <tr className="bg-amber-50/30 border-b border-slate-200">
                             <td className="px-6 py-3 border-r border-slate-200 pl-16">
                               <span className="text-sm font-bold text-amber-700">RTBA</span>
@@ -494,27 +495,29 @@ export default function AlocacaoColaborador() {
                           </tr>
 
                           {/* Adicionar Novo Projeto */}
-                          <tr className="bg-slate-50 border-b border-slate-300 shadow-inner">
-                            <td className="px-6 py-3 border-r border-slate-200 pl-16" colSpan={meses.length + 1}>
-                              <div className="flex items-center gap-2">
-                                <Plus className="w-4 h-4 text-indigo-500" />
-                                <span className="text-sm font-semibold text-slate-600">Alocar em novo projeto:</span>
-                                <select 
-                                  className="p-1 border border-slate-300 rounded text-sm bg-white"
-                                  onChange={e => {
-                                    addProjetoToColaborador(c.id, e.target.value);
-                                    e.target.value = '';
-                                  }}
-                                  defaultValue=""
-                                >
-                                  <option value="" disabled>Selecionar...</option>
-                                  {projetos.filter(p => p.nome !== 'RTBA' && !projsIds.includes(p.id) && p.status === 'ativo' && filtroProjetos.includes(p.id)).map(p => (
-                                    <option key={p.id} value={p.id}>{p.nome}</option>
-                                  ))}
-                                </select>
-                              </div>
-                            </td>
-                          </tr>
+                          {canEdit && (
+                            <tr className="bg-slate-50 border-b border-slate-300 shadow-inner">
+                              <td className="px-6 py-3 border-r border-slate-200 pl-16" colSpan={meses.length + 1}>
+                                <div className="flex items-center gap-2">
+                                  <Plus className="w-4 h-4 text-indigo-500" />
+                                  <span className="text-sm font-semibold text-slate-600">Alocar em novo projeto:</span>
+                                  <select 
+                                    className="p-1 border border-slate-300 rounded text-sm bg-white"
+                                    onChange={e => {
+                                      addProjetoToColaborador(c.id, e.target.value);
+                                      e.target.value = '';
+                                    }}
+                                    defaultValue=""
+                                  >
+                                    <option value="" disabled>Selecionar...</option>
+                                    {projetos.filter(p => p.nome !== 'RTBA' && !projsIds.includes(p.id) && p.status === 'ativo' && filtroProjetos.includes(p.id)).map(p => (
+                                      <option key={p.id} value={p.id}>{p.nome}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
                         </>
                       )}
                     </Fragment>

@@ -19,6 +19,10 @@ export default function Colaboradores() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filtroVaga, setFiltroVaga] = useState('todas');
 
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const canEdit = user && (user.role === 'admin' || user.role === 'gestor');
+  const canSeeCost = user && (user.role === 'admin' || user.role === 'gestor');
   
   const [formData, setFormData] = useState({
     nome: '',
@@ -51,19 +55,26 @@ export default function Colaboradores() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
+
     const method = editingId ? 'PUT' : 'POST';
     const url = editingId 
       ? `${API_URL}/colaboradores/${editingId}`
       : `${API_URL}/colaboradores`;
 
     try {
-      await fetch(url, {
+      const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
-      setIsModalOpen(false);
-      fetchData();
+      if (res.ok) {
+        setIsModalOpen(false);
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(`Erro ao salvar: ${err.error}`);
+      }
     } catch (error) {
       console.error(error);
       alert('Erro ao salvar colaborador.');
@@ -71,16 +82,22 @@ export default function Colaboradores() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canEdit) return;
     if (!confirm('Tem certeza que deseja excluir?')) return;
     try {
-      await fetch(`${API_URL}/colaboradores/${id}`, { method: 'DELETE' });
-      fetchData();
+      const res = await fetch(`${API_URL}/colaboradores/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchData();
+      } else {
+        alert('Erro ao excluir colaborador.');
+      }
     } catch (error) {
       console.error(error);
     }
   };
 
   const openModal = (colab?: Colaborador) => {
+    if (!canEdit) return;
     if (colab) {
       setEditingId(colab.id);
       setFormData({ 
@@ -102,13 +119,15 @@ export default function Colaboradores() {
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-slate-800">Recursos Humanos</h1>
-        <button 
-          onClick={() => openModal()}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Novo Colaborador
-        </button>
+        {canEdit && (
+          <button 
+            onClick={() => openModal()}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Novo Colaborador
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -142,7 +161,7 @@ export default function Colaboradores() {
                 <th className="px-6 py-4">Tipo</th>
                 <th className="px-6 py-4">Cargo</th>
                 <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Ações</th>
+                {canEdit && <th className="px-6 py-4 text-right">Ações</th>}
               </tr>
             </thead>
             <tbody>
@@ -163,19 +182,21 @@ export default function Colaboradores() {
                       {c.status.toUpperCase()}
                     </span>
                   </td>
-                  <td className="px-6 py-4 flex justify-end gap-2">
-                    <button onClick={() => openModal(c)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleDelete(c.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
+                  {canEdit && (
+                    <td className="px-6 py-4 flex justify-end gap-2">
+                      <button onClick={() => openModal(c)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleDelete(c.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={canEdit ? 5 : 4} className="px-6 py-8 text-center text-slate-500">
                     Nenhum colaborador encontrado.
                   </td>
                 </tr>
@@ -186,7 +207,7 @@ export default function Colaboradores() {
       </div>
 
       {/* Modal */}
-      {isModalOpen && (
+      {isModalOpen && canEdit && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h2 className="text-xl font-bold mb-6 text-slate-800">
@@ -217,18 +238,20 @@ export default function Colaboradores() {
                   </select>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Custo Mensal (R$)</label>
-                <input 
-                  required 
-                  type="number" 
-                  step="0.01" 
-                  min="0"
-                  className="w-full p-2 border rounded-lg" 
-                  value={formData.custo_mensal} 
-                  onChange={e => setFormData({...formData, custo_mensal: parseFloat(e.target.value) || 0})} 
-                />
-              </div>
+              {canSeeCost && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Custo Mensal (R$)</label>
+                  <input 
+                    required 
+                    type="number" 
+                    step="0.01" 
+                    min="0"
+                    className="w-full p-2 border rounded-lg" 
+                    value={formData.custo_mensal} 
+                    onChange={e => setFormData({...formData, custo_mensal: parseFloat(e.target.value) || 0})} 
+                  />
+                </div>
+              )}
               <div className="flex items-center mt-2">
                 <input 
                   type="checkbox" 

@@ -1,11 +1,67 @@
 import { Router } from 'express';
 import { AppService } from '../application/services';
+import { authMiddleware } from './authMiddleware';
 import * as xlsx from 'xlsx';
 
 export const routes = Router();
 const service = new AppService();
 
-routes.get('/dashboard', async (req, res) => {
+// --- Rota de Autenticação ---
+routes.post('/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
+    }
+    const result = await service.login(email, password);
+    if (!result) {
+      return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
+    }
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Gerenciamento de Usuários (Apenas Admin) ---
+routes.get('/users', authMiddleware(['admin']), async (req, res) => {
+  try {
+    const data = await service.getUsers();
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+routes.post('/users', authMiddleware(['admin']), async (req, res) => {
+  try {
+    const data = await service.createUser(req.body);
+    res.json(data);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+routes.put('/users/:id', authMiddleware(['admin']), async (req, res) => {
+  try {
+    const data = await service.updateUser(req.params.id as string, req.body);
+    res.json(data);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+routes.delete('/users/:id', authMiddleware(['admin']), async (req, res) => {
+  try {
+    await service.deleteUser(req.params.id as string);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// --- Dashboard ---
+routes.get('/dashboard', authMiddleware(['admin', 'gestor', 'viewer']), async (req, res) => {
   try {
     const data = await service.getDashboardData();
     res.json(data);
@@ -14,17 +70,18 @@ routes.get('/dashboard', async (req, res) => {
   }
 });
 
-// Colaboradores
-routes.get('/colaboradores', async (req, res) => {
+// --- Colaboradores ---
+routes.get('/colaboradores', authMiddleware(['admin', 'gestor', 'viewer']), async (req, res) => {
   try {
-    const data = await service.getColaboradores();
+    const role = (req as any).user.role;
+    const data = await service.getColaboradores(role);
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-routes.post('/colaboradores', async (req, res) => {
+routes.post('/colaboradores', authMiddleware(['admin', 'gestor']), async (req, res) => {
   try {
     const data = await service.createColaborador(req.body);
     res.json(data);
@@ -33,26 +90,26 @@ routes.post('/colaboradores', async (req, res) => {
   }
 });
 
-routes.put('/colaboradores/:id', async (req, res) => {
+routes.put('/colaboradores/:id', authMiddleware(['admin', 'gestor']), async (req, res) => {
   try {
-    const data = await service.updateColaborador(req.params.id, req.body);
+    const data = await service.updateColaborador(req.params.id as string, req.body);
     res.json(data);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 });
 
-routes.delete('/colaboradores/:id', async (req, res) => {
+routes.delete('/colaboradores/:id', authMiddleware(['admin', 'gestor']), async (req, res) => {
   try {
-    await service.deleteColaborador(req.params.id);
+    await service.deleteColaborador(req.params.id as string);
     res.json({ success: true });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 });
 
-// Projetos
-routes.get('/projetos', async (req, res) => {
+// --- Projetos ---
+routes.get('/projetos', authMiddleware(['admin', 'gestor', 'viewer']), async (req, res) => {
   try {
     const data = await service.getProjetos();
     res.json(data);
@@ -61,7 +118,7 @@ routes.get('/projetos', async (req, res) => {
   }
 });
 
-routes.post('/projetos', async (req, res) => {
+routes.post('/projetos', authMiddleware(['admin', 'gestor']), async (req, res) => {
   try {
     const data = await service.createProjeto(req.body);
     res.json(data);
@@ -70,26 +127,26 @@ routes.post('/projetos', async (req, res) => {
   }
 });
 
-routes.put('/projetos/:id', async (req, res) => {
+routes.put('/projetos/:id', authMiddleware(['admin', 'gestor']), async (req, res) => {
   try {
-    const data = await service.updateProjeto(req.params.id, req.body);
+    const data = await service.updateProjeto(req.params.id as string, req.body);
     res.json(data);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 });
 
-routes.delete('/projetos/:id', async (req, res) => {
+routes.delete('/projetos/:id', authMiddleware(['admin', 'gestor']), async (req, res) => {
   try {
-    await service.deleteProjeto(req.params.id);
+    await service.deleteProjeto(req.params.id as string);
     res.json({ success: true });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 });
 
-// Alocações
-routes.get('/alocacoes', async (req, res) => {
+// --- Alocações ---
+routes.get('/alocacoes', authMiddleware(['admin', 'gestor', 'viewer']), async (req, res) => {
   try {
     const data = await service.getAllAlocacoes();
     res.json(data);
@@ -98,18 +155,17 @@ routes.get('/alocacoes', async (req, res) => {
   }
 });
 
-routes.get('/alocacoes/projeto/:id', async (req, res) => {
+routes.get('/alocacoes/projeto/:id', authMiddleware(['admin', 'gestor', 'viewer']), async (req, res) => {
   try {
-    const data = await service.getAlocacoesPorProjeto(req.params.id);
+    const data = await service.getAlocacoesPorProjeto(req.params.id as string);
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-routes.post('/alocacoes', async (req, res) => {
+routes.post('/alocacoes', authMiddleware(['admin', 'gestor']), async (req, res) => {
   try {
-    // Array of allocations
     await service.salvarAlocacoes(req.body.alocacoes);
     res.json({ success: true });
   } catch (error: any) {
@@ -117,20 +173,21 @@ routes.post('/alocacoes', async (req, res) => {
   }
 });
 
-routes.get('/alocacoes/colaboradores', async (req, res) => {
+routes.get('/alocacoes/colaboradores', authMiddleware(['admin', 'gestor', 'viewer']), async (req, res) => {
   try {
     const { inicio, fim } = req.query as { inicio: string, fim: string };
     if (!inicio || !fim) {
       return res.status(400).json({ error: 'Período inicio e fim são obrigatórios (YYYY-MM)'});
     }
-    const data = await service.getColaboradoresComAlocacoes(inicio, fim);
+    const role = (req as any).user.role;
+    const data = await service.getColaboradoresComAlocacoes(inicio, fim, role);
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-routes.get('/alocacoes/export', async (req, res) => {
+routes.get('/alocacoes/export', authMiddleware(['admin', 'gestor', 'viewer']), async (req, res) => {
   try {
     const { inicio, fim, nome, tipo, status, vaga, projetos } = req.query as { 
       inicio?: string, 
@@ -146,7 +203,8 @@ routes.get('/alocacoes/export', async (req, res) => {
       return res.status(400).json({ error: 'Período inicio e fim são obrigatórios (YYYY-MM)'});
     }
 
-    const data = await service.getColaboradoresComAlocacoes(inicio, fim);
+    const role = (req as any).user.role;
+    const data = await service.getColaboradoresComAlocacoes(inicio, fim, role);
     const projetosDb = await service.getProjetos();
     const activeProjects = projetosDb.filter(p => p.nome !== 'RTBA');
     
@@ -225,13 +283,14 @@ routes.get('/alocacoes/export', async (req, res) => {
   }
 });
 
-routes.get('/alocacoes/export-rtba', async (req, res) => {
+routes.get('/alocacoes/export-rtba', authMiddleware(['admin', 'gestor', 'viewer']), async (req, res) => {
   try {
     const { inicio, fim, nome, tipo, status } = req.query as { inicio?: string, fim?: string, nome?: string, tipo?: string, status?: string };
     if (!inicio || !fim) {
       return res.status(400).json({ error: 'Período inicio e fim são obrigatórios (YYYY-MM)'});
     }
-    const data = await service.getColaboradoresComAlocacoes(inicio, fim);
+    const role = (req as any).user.role;
+    const data = await service.getColaboradoresComAlocacoes(inicio, fim, role);
     
     const filtered = data.filter(c => {
       const matchNome = nome ? (c.nome.toLowerCase().includes(nome.toLowerCase()) || c.cargo.toLowerCase().includes(nome.toLowerCase())) : true;

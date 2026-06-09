@@ -74,3 +74,22 @@ export interface IConfigRepository {
   getConfig(key: string): Promise<string | null>;
   setConfig(key: string, value: string): Promise<void>;
 }
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  password_hash: string;
+  role: 'admin' | 'gestor' | 'viewer';
+  created_at: string;
+}
+
+export interface IUserRepository {
+  findAllUsers(): Promise<User[]>;
+  findUserById(id: string): Promise<User | null>;
+  findUserByEmail(email: string): Promise<User | null>;
+  createUser(user: User): Promise<User>;
+  updateUser(id: string, user: Partial<User>): Promise<User>;
+  deleteUser(id: string): Promise<void>;
+}
+

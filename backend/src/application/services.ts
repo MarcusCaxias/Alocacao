@@ -1,27 +1,97 @@
-import { XlsxRepository } from '../infrastructure/xlsxRepository';
+import { PgRepository } from '../infrastructure/pgRepository';
 import { validateAlocacoes, calculateRTBA } from '../domain/alocacaoRules';
-import { Colaborador, Projeto, Alocacao, ColaboradorComAlocacoes, RTBA_PROJECT_ID } from '../domain/types';
+import { Colaborador, Projeto, Alocacao, ColaboradorComAlocacoes, RTBA_PROJECT_ID, User } from '../domain/types';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-production';
 
 export class AppService {
-  private repo: XlsxRepository;
+  private repo: PgRepository;
 
   constructor() {
-    this.repo = new XlsxRepository();
+    this.repo = new PgRepository();
+  }
+
+  // --- Autenticação ---
+  async login(email: string, passwordPlain: string): Promise<{ token: string, user: Omit<User, 'password_hash'> } | null> {
+    const user = await this.repo.findUserByEmail(email);
+    if (!user) return null;
+
+    const isValid = await bcrypt.compare(passwordPlain, user.password_hash);
+    if (!isValid) return null;
+
+    const token = jwt.sign(
+      { id: user.id, name: user.name, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '12h' }
+    );
+
+    const { password_hash, ...userWithoutPassword } = user;
+    return { token, user: userWithoutPassword };
+  }
+
+  // --- Usuários (Apenas Admin) ---
+  async getUsers(): Promise<Omit<User, 'password_hash'>[]> {
+    const users = await this.repo.findAllUsers();
+    return users.map(u => {
+      const { password_hash, ...rest } = u;
+      return rest;
+    });
+  }
+
+  async createUser(data: Omit<User, 'id' | 'created_at'>): Promise<Omit<User, 'password_hash'>> {
+    const password_hash = await bcrypt.hash(data.password_hash, 10);
+    const user = {
+      ...data,
+      id: '',
+      password_hash,
+      created_at: new Date().toISOString()
+    } as User;
+    const created = await this.repo.createUser(user);
+    const { password_hash: _, ...rest } = created;
+    return rest;
+  }
+
+  async updateUser(id: string, data: Partial<User>): Promise<Omit<User, 'password_hash'>> {
+    const updateData = { ...data };
+    if (data.password_hash) {
+      updateData.password_hash = await bcrypt.hash(data.password_hash, 10);
+    }
+    const updated = await this.repo.updateUser(id, updateData);
+    const { password_hash: _, ...rest } = updated;
+    return rest;
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    return this.repo.deleteUser(id);
   }
 
   // --- Colaboradores ---
-  async getColaboradores(): Promise<Colaborador[]> {
-    return this.repo.findAll();
+  async getColaboradores(userRole?: string): Promise<Colaborador[]> {
+    const list = await this.repo.findAll();
+    if (userRole === 'viewer') {
+      return list.map(c => {
+        const { custo_mensal, ...rest } = c;
+        return rest;
+      });
+    }
+    return list;
   }
 
-  async getColaboradorById(id: string): Promise<Colaborador | null> {
-    return this.repo.findById(id);
+  async getColaboradorById(id: string, userRole?: string): Promise<Colaborador | null> {
+    const colab = await this.repo.findById(id);
+    if (colab && userRole === 'viewer') {
+      const { custo_mensal, ...rest } = colab;
+      return rest;
+    }
+    return colab;
   }
 
   async createColaborador(data: Omit<Colaborador, 'id' | 'data_criacao' | 'data_atualizacao'>): Promise<Colaborador> {
     const colab = {
       ...data,
-      id: '', // Will be generated in repo
+      id: '', 
       data_criacao: new Date().toISOString(),
       data_atualizacao: new Date().toISOString()
     } as Colaborador;
@@ -105,19 +175,12 @@ export class AppService {
     };
   }
 
-  async getColaboradoresComAlocacoes(mesInicio: string, mesFim: string): Promise<ColaboradorComAlocacoes[]> {
+  async getColaboradoresComAlocacoes(mesInicio: string, mesFim: string, userRole?: string): Promise<ColaboradorComAlocacoes[]> {
     const colaboradores = await this.repo.findAll();
     const alocacoes = await this.repo.findAllAlocacoes();
 
     return colaboradores.map(c => {
       const colabAlocs = alocacoes.filter(a => a.colaborador_id === c.id && a.ano_mes >= mesInicio && a.ano_mes <= mesFim);
-      
-      const meses = new Set<string>();
-      colabAlocs.forEach(a => meses.add(a.ano_mes));
-      
-      // Se não tem alocação no mês X, RTBA é 100%. Devemos gerar todos os meses do período?
-      // Por simplicidade, vamos agrupar apenas os meses que têm alocação, 
-      // ou gerar a lista de meses entre mesInicio e mesFim.
       
       const mesesNoIntervalo = this.gerarMeses(mesInicio, mesFim);
       
@@ -133,10 +196,16 @@ export class AppService {
         };
       });
 
-      return {
+      const mapped = {
         ...c,
         alocacoes_mensais
-      };
+      } as ColaboradorComAlocacoes;
+
+      if (userRole === 'viewer') {
+        delete mapped.custo_mensal;
+      }
+
+      return mapped;
     });
   }
 

@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: alocacao-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-alocacao}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: alocacao-backend
+    restart: always
+    environment:
+      - PORT=3001
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-alocacao}
+      - JWT_SECRET=${JWT_SECRET:-super-secret-key-change-in-production}
+    volumes:
+      - ./data:/usr/src/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: alocacao-frontend
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    # --- Configurações opcionais para integração com o Traefik da VPS ---
+    # Descomente as linhas abaixo para expor o sistema através do Traefik:
+    #
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.alocacao.rule=Host(`alocacao.seudominio.com`)"
+    #   - "traefik.http.routers.alocacao.entrypoints=websecure"
+    #   - "traefik.http.routers.alocacao.tls.certresolver=letsencrypt"
+    #   - "traefik.http.services.alocacao.loadbalancer.server.port=80"
+    # networks:
+    #   - traefik-net
+
+volumes:
+  postgres_data:
+
+# --- Se integrar com o Traefik na VPS, declare a rede externa dele aqui ---
+# networks:
+#   traefik-net:
+#     external: true
