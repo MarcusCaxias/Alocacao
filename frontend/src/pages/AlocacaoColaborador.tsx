@@ -179,7 +179,19 @@ export default function AlocacaoColaborador() {
       }).toString();
 
       const url = `${API_URL}/alocacoes/export-rtba?${query}`;
-      window.open(url, '_blank');
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error('Falha ao exportar RTBA');
+      }
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', `rtba_${filtroInicio}_a_${filtroFim}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error("Erro ao exportar", error);
       alert('Erro ao exportar RTBA');
@@ -199,7 +211,19 @@ export default function AlocacaoColaborador() {
       }).toString();
 
       const url = `${API_URL}/alocacoes/export?${query}`;
-      window.open(url, '_blank');
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error('Falha ao exportar alocações');
+      }
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', `alocacoes_${filtroInicio}_a_${filtroFim}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error("Erro ao exportar alocações", error);
       alert('Erro ao exportar alocações');
